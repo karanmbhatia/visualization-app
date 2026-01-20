@@ -7,24 +7,28 @@
   let colormap = 'jet';
   let showEdges = true;
   let loading = false;
-  let statsText = 'Load a JSON file to begin';
-  let fileInput: HTMLInputElement;
+  let statsText = 'Click "Load Data" to begin';
   let isPanelOpen = true;
 
   // Camera reference for reset
   let cameraRef: any = null;
 
-  async function handleFileChange(e: Event) {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
+  // Paths to your JSON files in the static folder
+  const ELLIPSOID_DATA_PATH = '/data/elipsoid_data.json';
+  const PRESSURE_DATA_PATH = '/data/pressure_example_data.json';
 
+  async function loadJsonData(filePath: string, dataName: string) {
     loading = true;
-    statsText = 'Loading...';
+    statsText = `Loading ${dataName}...`;
 
     try {
-      const text = await file.text();
-      jsonData = JSON.parse(text);
+      const response = await fetch(filePath);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load file: ${response.statusText}`);
+      }
+
+      jsonData = await response.json();
       
       const gridDims = jsonData.metadata?.gridDims?.join('×') || 'Unknown';
       const cellCount = jsonData.grid?.cells?.num || 0;
@@ -33,7 +37,7 @@
       const maxP = Math.max(...pressures);
       
       statsText = `Grid: ${gridDims} | Cells: ${cellCount} | Pressure: ${minP.toFixed(2)}-${maxP.toFixed(2)} bar`;
-      console.log('✅ JSON data loaded successfully');
+      console.log(`✅ ${dataName} loaded successfully`);
     } catch (error) {
       console.error('Error loading JSON:', error);
       statsText = `Error: ${error.message}`;
@@ -60,7 +64,7 @@
 </script>
 
 <svelte:head>
-  <title>Method 1: MRST Grid Visualization</title>
+  <title>MRST Grid Visualization</title>
 </svelte:head>
 
 <div class="page-container">
@@ -75,18 +79,6 @@
         <div class="controls-content">
           <h3 class="panel-title">Controls</h3>
           
-          <div class="control-item">
-            <label for="file-upload">Load MRST Data</label>
-            <input
-              id="file-upload"
-              type="file"
-              accept=".json"
-              bind:this={fileInput}
-              on:change={handleFileChange}
-              class="file-input"
-            />
-          </div>
-
           <div class="control-item">
             <label for="colormap">Colormap</label>
             <select id="colormap" bind:value={colormap} on:change={handleColormapChange}>
@@ -116,6 +108,27 @@
         </div>
       </div>
     {/if}
+  </div>
+
+  <!-- Right Side Data Selection Buttons -->
+  <div class="data-buttons">
+    <button 
+      on:click={() => loadJsonData(ELLIPSOID_DATA_PATH, 'Ellipsoid Data')} 
+      class="data-button ellipsoid-button"
+      disabled={loading}
+    >
+      <span class="button-icon">🔵</span>
+      <span class="button-text">Ellipsoid Plot</span>
+    </button>
+    
+    <button 
+      on:click={() => loadJsonData(PRESSURE_DATA_PATH, 'Pressure Example Data')} 
+      class="data-button pressure-button"
+      disabled={loading}
+    >
+      <span class="button-icon">📊</span>
+      <span class="button-text">Pressure Plot</span>
+    </button>
   </div>
 
   <!-- 3D Visualization -->
@@ -213,32 +226,29 @@
     font-weight: 500;
   }
 
-  .file-input {
+  .load-button {
     width: 100%;
-    padding: 0.625rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    padding: 0.75rem 1.25rem;
+    background: linear-gradient(135deg, #48bb78, #38a169);
     color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
 
-  .file-input:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
+  .load-button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
   }
 
-  .file-input::file-selector-button {
-    padding: 0.5rem 1rem;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-right: 0.75rem;
+  .load-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   select {
@@ -351,5 +361,68 @@
   .loading-overlay p {
     color: #667eea;
     font-weight: 600;
+  }
+
+  /* Right Side Data Selection Buttons */
+  .data-buttons {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .data-button {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 24px;
+    border: none;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+  }
+
+  .data-button:hover:not(:disabled) {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+
+  .data-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .ellipsoid-button {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+  }
+
+  .ellipsoid-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5568d3, #6a3f8f);
+  }
+
+  .pressure-button {
+    background: linear-gradient(135deg, #f093fb, #f5576c);
+    color: white;
+  }
+
+  .pressure-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e082ea, #e44658);
+  }
+
+  .button-icon {
+    font-size: 1.5rem;
+  }
+
+  .button-text {
+    letter-spacing: 0.5px;
   }
 </style>
