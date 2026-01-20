@@ -1,27 +1,44 @@
 <script>
+  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
 
-  let canvas;
-
   onMount(() => {
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = 'white';
-    ctx.font = '20px Arial';
-    ctx.fillText('Geological Visualization Canvas', 20, 40);
+    // Redirect to the json route by default
+    goto('/json');
   });
 </script>
 
-<h1>Geological Visualization Portal</h1>
+<div class="loading-container">
+  <div class="spinner"></div>
+  <p>Loading...</p>
+</div>
 
-<canvas bind:this={canvas} width="800" height="400" style="border:1px solid #444;"></canvas>
+<style>
+  .loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: #f9fafb;
+  }
 
-<h3>Visualization Methods</h3>
+  .spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #e5e7eb;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
 
-<ul>
-  <li><a href="/json">Method 1 – JSON Input (MATLAB export)</a></li>
-  <li><a href="/numerical">Method 2 – Numerical generation</a></li>
-  <li><a href="/wasm">Method 3 – WASM from MATLAB C++</a></li>
-</ul>
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  p {
+    margin-top: 1rem;
+    color: #6b7280;
+    font-size: 1rem;
+  }
+</style>
