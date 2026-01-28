@@ -1,54 +1,130 @@
-<script lang="ts">
+<script>
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import ThrelteCanvas from '$lib/components/ThrelteCanvas.svelte';
-  import JsonScene from '$lib/components/JsonScene.svelte';
+  import Method1Scene from '$lib/components/Method1Scene.svelte';
 
-  let jsonData: any = null;
-  let colormap = 'jet';
-  let showEdges = true;
-  let loading = false;
-  let statsText = 'Click "Load Data" to begin';
+  let wasmModule = null;
+  let delaunay = null;
+  let wasmLoaded = false;
+  let wasmStatus = 'Initializing...';
+  let loading = true;
   let isPanelOpen = true;
+  let message = '';
+  let isError = false;
+
+  // Tessellation controls
+  let viewMode = 'both'; // 'solid', 'wireframe', or 'both'
+  let regenerateTrigger = 0;
+  let vertexCount = 0;
+  let tetrahedraCount = 0;
 
   // Camera reference for reset
-  let cameraRef: any = null;
+  let cameraRef = null;
 
-  // Paths to your JSON files in the static folder
-  const ELLIPSOID_DATA_PATH = '/data/elipsoid_data.json';
-  const PRESSURE_DATA_PATH = '/data/pressure_example_data.json';
+  // Computed values for scene
+  $: showSolid = viewMode === 'solid' || viewMode === 'both';
+  $: showWireframe = viewMode === 'wireframe' || viewMode === 'both';
 
-  async function loadJsonData(filePath: string, dataName: string) {
+  onMount(() => {
+    if (browser) {
+      // Auto-load WASM on mount
+      loadWasmModule();
+    }
+  });
+
+  async function loadWasmModule() {
     loading = true;
-    statsText = `Loading ${dataName}...`;
+    wasmStatus = '🔄 Loading WASM module...';
 
     try {
-      const response = await fetch(filePath);
+      console.log('Loading WASM module...');
       
+      // Fetch and execute the delaunay_tessellation.js script
+      const response = await fetch('/wasm/delaunay_tessellation.js');
       if (!response.ok) {
-        throw new Error(`Failed to load file: ${response.statusText}`);
+        throw new Error(`Failed to fetch delaunay_tessellation.js: ${response.statusText}`);
+      }
+      
+      const scriptText = await response.text();
+      
+      // Execute the script to get Module function in global scope
+      const globalEval = eval;
+      globalEval(scriptText);
+      
+      // Check if Module is available (NOT createModule)
+      if (typeof Module === 'undefined') {
+        throw new Error('Module not found in delaunay_tessellation.js');
       }
 
-      jsonData = await response.json();
+      console.log('Module function loaded, initializing...');
+
+      // Configure module to load WASM
+      const moduleConfig = {
+        locateFile: (path) => {
+          if (path.endsWith('.wasm')) {
+            return '/wasm/delaunay_tessellation.wasm';
+          }
+          return '/wasm/' + path;
+        },
+        print: (text) => console.log('[WASM]', text),
+        printErr: (text) => console.error('[WASM Error]', text)
+      };
+
+      // Instantiate the module (Module is a function that returns a promise)
+      wasmModule = await Module(moduleConfig);
       
-      const gridDims = jsonData.metadata?.gridDims?.join('×') || 'Unknown';
-      const cellCount = jsonData.grid?.cells?.num || 0;
-      const pressures = jsonData.solution?.pressureBar || [];
-      const minP = Math.min(...pressures);
-      const maxP = Math.max(...pressures);
+      console.log('✅ WASM module loaded');
+      console.log('Available exports:', Object.keys(wasmModule).slice(0, 30));
       
-      statsText = `Grid: ${gridDims} | Cells: ${cellCount} | Pressure: ${minP.toFixed(2)}-${maxP.toFixed(2)} bar`;
-      console.log(`✅ ${dataName} loaded successfully`);
+      // Create DelaunayTessellation object
+      delaunay = new wasmModule.DelaunayTessellation();
+      console.log('✅ DelaunayTessellation object created');
+      
+      wasmLoaded = true;
+      wasmStatus = '✅ Ready';
+      
+      // Auto-generate first tessellation
+      setTimeout(() => {
+        handleRegenerate();
+      }, 100);
+      
+      updateMessage('Tessellation ready', false);
+      
     } catch (error) {
-      console.error('Error loading JSON:', error);
-      statsText = `Error: ${error.message}`;
+      console.error('❌ WASM Loading Error:', error);
+      console.error('Error stack:', error.stack);
+      wasmStatus = '✗ Failed to load';
+      updateMessage(`Error: ${error.message}`, true);
+      wasmLoaded = false;
     } finally {
       loading = false;
     }
   }
 
-  function handleColormapChange(e: Event) {
-    const select = e.target as HTMLSelectElement;
-    colormap = select.value;
+  function handleRegenerate() {
+    if (!wasmLoaded || !delaunay) {
+      updateMessage('⚠️ WASM not ready yet', true);
+      return;
+    }
+    
+    regenerateTrigger++;
+    updateMessage('🔨 Generating...', false);
+    
+    setTimeout(() => {
+      updateStats();
+    }, 500);
+  }
+
+  function updateStats() {
+    if (wasmLoaded && vertexCount > 0) {
+      updateMessage(`Vertices: ${vertexCount} | Tetrahedra: ${tetrahedraCount}`, false);
+    }
+  }
+
+  function updateMessage(text, error = false) {
+    message = text;
+    isError = error;
   }
 
   function handleResetView() {
@@ -61,10 +137,14 @@
   function togglePanel() {
     isPanelOpen = !isPanelOpen;
   }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+  }
 </script>
 
 <svelte:head>
-  <title>MRST Grid Visualization</title>
+  <title>Method 1: MRST Grid - Delaunay Tessellation</title>
 </svelte:head>
 
 <div class="page-container">
@@ -79,70 +159,88 @@
         <div class="controls-content">
           <h3 class="panel-title">Controls</h3>
           
-          <div class="control-item">
-            <label for="colormap">Colormap</label>
-            <select id="colormap" bind:value={colormap} on:change={handleColormapChange}>
-              <option value="jet">Jet</option>
-              <option value="viridis">Viridis</option>
-              <option value="plasma">Plasma</option>
-              <option value="cool">Cool</option>
-            </select>
+          <div class="wasm-status" class:loaded={wasmLoaded} class:loading={loading}>
+            {wasmStatus}
           </div>
 
-          <div class="control-item">
-            <label class="checkbox-label">
-              <input type="checkbox" bind:checked={showEdges} />
-              <span>Show Edges</span>
-            </label>
-          </div>
+          {#if wasmLoaded}
+            <div class="control-item">
+              <button 
+                on:click={handleRegenerate} 
+                class="action-button regenerate"
+              >
+                🔄 Regenerate Grid
+              </button>
+            </div>
 
-          <div class="control-item">
-            <button on:click={handleResetView} class="action-button">
-              Reset View
-            </button>
-          </div>
+            <div class="control-item">
+              <label class="control-label">Display Mode</label>
+              <div class="toggle-group">
+                <button 
+                  class="toggle-option" 
+                  class:active={viewMode === 'wireframe'}
+                  on:click={() => setViewMode('wireframe')}
+                >
+                  Wireframe
+                </button>
+                <button 
+                  class="toggle-option" 
+                  class:active={viewMode === 'both'}
+                  on:click={() => setViewMode('both')}
+                >
+                  Both
+                </button>
+                <button 
+                  class="toggle-option" 
+                  class:active={viewMode === 'solid'}
+                  on:click={() => setViewMode('solid')}
+                >
+                  Solid
+                </button>
+              </div>
+            </div>
 
-          <div class="stats-display">
-            <p>{statsText}</p>
-          </div>
+            <div class="control-item">
+              <button on:click={handleResetView} class="action-button">
+                🔄 Reset View
+              </button>
+            </div>
+          {/if}
+
+          {#if message}
+            <div class:status-text={!isError} class:error-text={isError}>
+              {message}
+            </div>
+          {/if}
         </div>
       </div>
     {/if}
   </div>
 
-  <!-- Right Side Data Selection Buttons -->
-  <div class="data-buttons">
-    <button 
-      on:click={() => loadJsonData(ELLIPSOID_DATA_PATH, 'Ellipsoid Data')} 
-      class="data-button ellipsoid-button"
-      disabled={loading}
-    >
-      <span class="button-icon">🔵</span>
-      <span class="button-text">Ellipsoid Plot</span>
-    </button>
-    
-    <button 
-      on:click={() => loadJsonData(PRESSURE_DATA_PATH, 'Pressure Example Data')} 
-      class="data-button pressure-button"
-      disabled={loading}
-    >
-      <span class="button-icon">📊</span>
-      <span class="button-text">Pressure Plot</span>
-    </button>
-  </div>
-
   <!-- 3D Visualization -->
   <div class="canvas-container">
-    <ThrelteCanvas showGrid={true} cameraPosition={{ x: 30, y: 30, z: 30 }} resetTrigger={cameraRef}>
-      {#if jsonData}
-        <JsonScene {jsonData} {colormap} {showEdges} />
+    <ThrelteCanvas 
+      showGrid={true}
+      cameraPosition={{ x: 30, y: 30, z: 30 }} 
+      resetTrigger={cameraRef}
+    >
+      {#if wasmModule && delaunay && wasmLoaded}
+        <Method1Scene 
+          {wasmModule}
+          {delaunay}
+          {showSolid}
+          {showWireframe}
+          {regenerateTrigger}
+          bind:vertexCount
+          bind:tetrahedraCount
+        />
       {/if}
     </ThrelteCanvas>
     
     {#if loading}
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <p>Loading visualization...</p>
+        <p>Loading WASM module...</p>
       </div>
     {/if}
   </div>
@@ -151,9 +249,15 @@
 <style>
   .page-container {
     display: flex;
-    height: 100%;
+    height: 100vh;
     background: white;
     position: relative;
+  }
+
+  .canvas-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
   }
 
   .controls-panel {
@@ -199,109 +303,74 @@
   }
 
   .controls-content {
-    width: 300px;
+    width: 260px;
     max-height: calc(100vh - 140px);
     overflow-y: auto;
-    padding: 20px;
+    padding: 16px;
   }
 
   .panel-title {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
     font-weight: 700;
     color: white;
-    margin: 0 0 1.25rem 0;
-    padding-bottom: 0.75rem;
+    margin: 0 0 12px 0;
+    padding-bottom: 8px;
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
   }
 
-  .control-item {
-    margin-bottom: 1.25rem;
+  .wasm-status {
+    font-size: 0.8rem;
+    color: #a0aec0;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    background: rgba(66, 153, 225, 0.15);
+    border-radius: 6px;
+    border-left: 3px solid #4299e1;
+    font-weight: 500;
+    transition: all 0.3s ease;
   }
 
-  .control-item label {
+  .wasm-status.loaded {
+    background: rgba(72, 187, 120, 0.15);
+    border-left-color: #48bb78;
+    color: #68d391;
+  }
+
+  .wasm-status.loading {
+    background: rgba(237, 137, 54, 0.15);
+    border-left-color: #ed8936;
+    color: #f6ad55;
+  }
+
+  .control-item {
+    margin-bottom: 12px;
+  }
+
+  .control-label {
     display: block;
-    font-size: 0.875rem;
-    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
     color: white;
     font-weight: 500;
   }
 
-  .load-button {
-    width: 100%;
-    padding: 0.75rem 1.25rem;
-    background: linear-gradient(135deg, #48bb78, #38a169);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .load-button:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(72, 187, 120, 0.4);
-  }
-
-  .load-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  select {
-    width: 100%;
-    padding: 0.625rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    color: white;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  select:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  select option {
-    background: #2d3748;
-    color: white;
-  }
-
-  .checkbox-label {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    color: white;
-    font-size: 0.875rem;
-  }
-
-  .checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    margin-right: 0.5rem;
-    cursor: pointer;
-    accent-color: #667eea;
-  }
-
   .action-button {
     width: 100%;
-    padding: 0.75rem 1.25rem;
+    padding: 10px 12px;
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border: none;
     border-radius: 6px;
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.85rem;
     cursor: pointer;
     transition: all 0.3s ease;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+
+  .action-button.regenerate {
+    background: linear-gradient(135deg, #ed8936, #dd6b20);
+    text-transform: uppercase;
   }
 
   .action-button:hover {
@@ -309,25 +378,65 @@
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
   }
 
-  .stats-display {
-    margin-top: 1rem;
-    padding: 0.875rem;
-    background: rgba(102, 126, 234, 0.2);
+  .action-button.regenerate:hover {
+    box-shadow: 0 4px 12px rgba(237, 137, 54, 0.4);
+  }
+
+  /* Toggle Group Styles */
+  .toggle-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px;
     border-radius: 6px;
-    border-left: 3px solid #667eea;
   }
 
-  .stats-display p {
-    color: white;
+  .toggle-option {
+    padding: 8px 6px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    border: none;
+    border-radius: 4px;
     font-size: 0.75rem;
-    margin: 0;
-    line-height: 1.5;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
 
-  .canvas-container {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
+  .toggle-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .toggle-option.active {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  }
+
+  .status-text,
+  .error-text {
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    font-family: 'Courier New', monospace;
+  }
+
+  .status-text {
+    background: rgba(102, 126, 234, 0.2);
+    border-left: 3px solid #667eea;
+    color: white;
+  }
+
+  .error-text {
+    background: rgba(239, 68, 68, 0.2);
+    border-left: 3px solid #ef4444;
+    color: #fca5a5;
   }
 
   .loading-overlay {
@@ -363,66 +472,22 @@
     font-weight: 600;
   }
 
-  /* Right Side Data Selection Buttons */
-  .data-buttons {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    z-index: 100;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+  /* Scrollbar styling */
+  .controls-content::-webkit-scrollbar {
+    width: 4px;
   }
 
-  .data-button {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 24px;
-    border: none;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-    min-width: 200px;
+  .controls-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
   }
 
-  .data-button:hover:not(:disabled) {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  .controls-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
   }
 
-  .data-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  .ellipsoid-button {
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-  }
-
-  .ellipsoid-button:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5568d3, #6a3f8f);
-  }
-
-  .pressure-button {
-    background: linear-gradient(135deg, #f093fb, #f5576c);
-    color: white;
-  }
-
-  .pressure-button:hover:not(:disabled) {
-    background: linear-gradient(135deg, #e082ea, #e44658);
-  }
-
-  .button-icon {
-    font-size: 1.5rem;
-  }
-
-  .button-text {
-    letter-spacing: 0.5px;
+  .controls-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
   }
 </style>

@@ -6,12 +6,12 @@
 
   export let showGrid = true;
   export let showAxes = true;
-  export let cameraPosition = { x: 30, y: 30, z: 30 };
+  export let cameraPosition = { x: 50, y: 50, z: 50 };
   export let enableDamping = true;
   export let resetTrigger: any = null;
   export let backgroundColor = '#1a1a1a';
-  export let minDistance = 0.1;
-  export let maxDistance = 1000;
+  export let minDistance = 1;
+  export let maxDistance = 2000;
 
   let camera: any;
   let controls: any;
@@ -21,6 +21,8 @@
 
   onMount(() => {
     mounted = true;
+    console.log('🎥 ThrelteCanvas mounted');
+    console.log('📍 Initial camera position:', initialPosition);
   });
 
   // Watch for reset trigger
@@ -35,6 +37,16 @@
       controls.target.set(0, 0, 0);
       controls.update();
       console.log('🔄 Camera reset to initial position');
+      console.log('📍 Camera now at:', {
+        x: camera.position.x,
+        y: camera.position.y,
+        z: camera.position.z
+      });
+      console.log('🎯 Looking at:', {
+        x: controls.target.x,
+        y: controls.target.y,
+        z: controls.target.z
+      });
     }
   }
 </script>
@@ -56,22 +68,28 @@
           enablePan={true}
           {minDistance}
           {maxDistance}
+          target={[0, 0, 0]}
         />
       </T.PerspectiveCamera>
 
-      <!-- Lighting -->
+      <!-- Enhanced Lighting for better 3D visualization -->
       <T.AmbientLight intensity={0.6} />
-      <T.DirectionalLight position={[10, 20, 10]} intensity={0.8} castShadow />
-      <T.PointLight position={[-10, 10, -10]} intensity={0.3} />
+      <T.DirectionalLight position={[20, 40, 20]} intensity={0.8} castShadow />
+      <T.DirectionalLight position={[-20, 40, -20]} intensity={0.4} />
+      <T.PointLight position={[-20, 20, -20]} intensity={0.3} />
+      <T.PointLight position={[20, -20, 20]} intensity={0.2} />
 
-      <!-- Grid Helper -->
+      <!-- LARGER Grid Helper - Positioned at origin (0, 0, 0) with Y=0 plane -->
       {#if showGrid}
-        <T.GridHelper args={[20, 20, 0x888888, 0xcccccc]} />
+        <T.GridHelper 
+          args={[100, 100, 0x888888, 0x333333]} 
+          position={[0, 0, 0]}
+        />
       {/if}
 
-      <!-- Axes Helper (Optional) -->
+      <!-- Axes Helper (Optional) - Shows X(red), Y(green), Z(blue) -->
       {#if showAxes}
-        <T.AxesHelper args={[5]} />
+        <T.AxesHelper args={[20]} />
       {/if}
 
       <!-- Scene Content Slot -->

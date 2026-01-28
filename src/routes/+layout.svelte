@@ -15,7 +15,7 @@
           class:active={$page.url.pathname === '/json'}
           on:click={() => goto('/json')}
         >
-          Method 1: MRST Grid
+          Delaunay Tessellation
         </button>
         
         <button 
@@ -23,7 +23,7 @@
           class:active={$page.url.pathname === '/numerical'}
           on:click={() => goto('/numerical')}
         >
-          Method 2: Gravity Column
+          Stratigraphic Grid
         </button>
         
         <button 
@@ -31,7 +31,7 @@
           class:active={$page.url.pathname === '/wasm'}
           on:click={() => goto('/wasm')}
         >
-          Method 3: WASM Ellipsoid
+          WASM Ellipsoid
         </button>
       </div>
     </div>
