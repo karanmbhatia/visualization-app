@@ -281,7 +281,7 @@
     width: 320px;
     max-height: calc(100vh - 140px);
     overflow-y: auto;
-    padding: 20px;
+    padding: 10px;
   }
 
   .panel-title {
@@ -289,7 +289,7 @@
     font-weight: 700;
     color: white;
     margin: 0 0 1.25rem 0;
-    padding-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
   }
 

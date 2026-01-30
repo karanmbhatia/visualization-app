@@ -33,6 +33,14 @@
         >
           WASM Ellipsoid
         </button>
+
+        <button 
+          class="tab-button"
+          class:active={$page.url.pathname === '/grdecl'}
+          on:click={() => goto('/grdecl')}
+        >
+          GRDECL Grid
+        </button>
       </div>
     </div>
   </nav>
