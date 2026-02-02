@@ -6,6 +6,9 @@
   export let grdeclData: GrdeclData | null;
   export let colormap = 'jet';
   export let showEdges = true;
+  export let widthScale = 1.0;      // X-axis: Width of cells
+  export let depthScale = 1.0;      // Y-axis: Breadth of cells  
+  export let heightScale = 1.0;     // Z-axis: Height/thickness of layers
 
   let geometry: THREE.BufferGeometry | null = null;
   let material: THREE.MeshPhongMaterial | null = null;
@@ -62,7 +65,8 @@
   };
 
   /**
-   * Create Three.js geometry from GRDECL data
+   * Create Three.js geometry from GRDECL data with independent 3D scaling
+   * Scaling is applied via mesh.scale, not during vertex creation
    */
   function createGeometryFromGrdecl() {
     if (!grdeclData?.cells?.cellVertices) {
@@ -92,12 +96,11 @@
 
       const colorFunc = colormaps[colormap] || colormaps.jet;
       const { nx, ny, nz } = grdeclData.specgrid;
-      const totalCells = nx * ny * nz;
 
       let vertexOffset = 0;
       let activeCellIndex = 0;
 
-      // Process each cell
+      // Process each cell WITHOUT scaling applied to vertices
       for (let k = 0; k < nz; k++) {
         for (let j = 0; j < ny; j++) {
           for (let i = 0; i < nx; i++) {
@@ -113,22 +116,17 @@
             const normalized = k / Math.max(nz - 1, 1);
             const color = colorFunc(normalized);
 
-            // Add vertices with Y-Z swap for vertical orientation
+            // Add vertices WITHOUT scaling (scaling will be applied via mesh.scale)
             for (let v = 0; v < 8; v++) {
               const [x, y, z] = cellVerts[v];
-              allVertices.push(x, z, y); // Swap Y and Z
+              
+              // Swap Y and Z for vertical orientation in Three.js
+              // NO scaling applied here - that's done via meshScale
+              allVertices.push(x, z, y);
               allColors.push(color.r, color.g, color.b);
             }
 
             // Define faces for hexahedral cell (6 faces, 2 triangles each)
-            // Face indices based on corner ordering:
-            //     7----6
-            //    /|   /|
-            //   4----5 |
-            //   | 3--|-2
-            //   |/   |/
-            //   0----1
-
             const v0 = vertexOffset;
             
             // Bottom face (0-1-2-3)
@@ -155,7 +153,7 @@
             allIndices.push(v0 + 3, v0 + 4, v0 + 0);
             allIndices.push(v0 + 3, v0 + 7, v0 + 4);
 
-            // Add edges (12 edges for a hexahedral cell)
+            // Add edges (12 edges for a hexahedral cell) WITHOUT scaling
             const edges = [
               [0, 1], [1, 2], [2, 3], [3, 0], // Bottom face
               [4, 5], [5, 6], [6, 7], [7, 4], // Top face
@@ -165,7 +163,9 @@
             for (const [e1, e2] of edges) {
               const [x1, y1, z1] = cellVerts[e1];
               const [x2, y2, z2] = cellVerts[e2];
-              // Swap Y and Z for edges too
+              
+              // NO scaling applied to edges - that's done via meshScale
+              // Swap Y and Z for edges
               edgeVertices.push(x1, z1, y1, x2, z2, y2);
             }
 
@@ -200,8 +200,6 @@
           'position',
           new THREE.BufferAttribute(new Float32Array(edgeVertices), 3)
         );
-        // Center edges geometry to match the main geometry
-        edgesGeometry.center();
       }
 
       // Center and scale geometry
@@ -212,47 +210,58 @@
         const size = new THREE.Vector3();
         box.getSize(size);
         
-        console.log('📦 Bounding Box before centering:', {
-          min: { x: box.min.x, y: box.min.y, z: box.min.z },
-          max: { x: box.max.x, y: box.max.y, z: box.max.z },
-          size: { x: size.x, y: size.y, z: size.z }
-        });
-        
-        // Use Three.js built-in centering
+        // Center the geometry
         geometry.center();
         
-        // Recompute bounding box after centering
-        geometry.computeBoundingBox();
+        // Center edges to match
+        if (edgesGeometry) {
+          edgesGeometry.center();
+        }
         
+        // Calculate uniform scale to fit in view (around 15 units)
         const maxDim = Math.max(size.x, size.y, size.z);
         const targetSize = 15;
-        const scale = targetSize / maxDim;
+        const baseScale = targetSize / maxDim;
         
-        meshScale = [scale, scale, scale];
+        // Apply base scale combined with user's aspect ratio adjustments
+        // This way the mesh stays at a reasonable size while allowing aspect ratio control
+        meshScale = [
+          baseScale * widthScale,
+          baseScale * heightScale,
+          baseScale * depthScale
+        ];
+
         meshPosition = [0, 0, 0]; // Already centered by geometry.center()
         
-        console.log('📐 Positioning:', {
-          meshPosition,
-          meshScale,
-          maxDim,
-          targetSize
-        });
+        console.log(`📐 Grid scaled: Base=${baseScale.toFixed(3)}, W=${widthScale.toFixed(1)}, H=${heightScale.toFixed(1)}, D=${depthScale.toFixed(1)}`);
+        console.log(`📐 Final mesh scale: [${meshScale[0].toFixed(3)}, ${meshScale[1].toFixed(3)}, ${meshScale[2].toFixed(3)}]`);
       }
 
-      console.log(`✅ GRDECL Geometry created: ${activeCellIndex} active cells`);
-      console.log(`   Grid dimensions: ${nx} × ${ny} × ${nz}`);
-      console.log(`   Vertices: ${allVertices.length / 3}, Triangles: ${allIndices.length / 3}`);
+      console.log(`✅ GRDECL Geometry: ${activeCellIndex} cells`);
     } catch (error) {
       console.error('❌ Geometry creation error:', error);
     }
   }
 
-  // Reactive updates
+  // Reactive updates - regenerate geometry when any parameter changes
   $: if (grdeclData) {
     createGeometryFromGrdecl();
   }
   
   $: if (colormap && grdeclData) {
+    createGeometryFromGrdecl();
+  }
+  
+  // Reactive to 3D scaling changes
+  $: if (widthScale && grdeclData) {
+    createGeometryFromGrdecl();
+  }
+  
+  $: if (depthScale && grdeclData) {
+    createGeometryFromGrdecl();
+  }
+  
+  $: if (heightScale && grdeclData) {
     createGeometryFromGrdecl();
   }
 </script>
