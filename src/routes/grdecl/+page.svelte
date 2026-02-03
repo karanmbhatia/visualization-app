@@ -5,11 +5,13 @@
   import { parseGrdecl, type GrdeclData } from '$lib/utils/grdeclParser';
 
   let grdeclData: GrdeclData | null = null;
+  let fileContent: string = '';
   let colormap = 'jet';
   let showEdges = true;
   let loading = false;
   let statsText = 'Loading GRDECL data...';
-  let isPanelOpen = true;
+  let isControlPanelOpen = true;
+  let isFileViewerOpen = false;
 
   // Physical size controls (0.1 to 10.0 range)
   let widthScale = 1.0;    // X-axis: Width of each grid cell
@@ -38,10 +40,11 @@
         throw new Error(`Failed to load file: ${response.statusText}`);
       }
 
-      const fileContent = await response.text();
+      const fileText = await response.text();
+      fileContent = fileText; // Store for file viewer
       
       statsText = 'Parsing GRDECL format...';
-      grdeclData = parseGrdecl(fileContent);
+      grdeclData = parseGrdecl(fileText);
       
       const { nx, ny, nz } = grdeclData.specgrid;
       const activeCells = grdeclData.cells.num;
@@ -72,8 +75,12 @@
     }, 100);
   }
 
-  function togglePanel() {
-    isPanelOpen = !isPanelOpen;
+  function toggleControlPanel() {
+    isControlPanelOpen = !isControlPanelOpen;
+  }
+
+  function toggleFileViewer() {
+    isFileViewerOpen = !isFileViewerOpen;
   }
 
   // Reset cell sizes to default (1.0)
@@ -112,13 +119,13 @@
 </svelte:head>
 
 <div class="page-container">
-  <!-- Floating Controls Panel -->
-  <div class="controls-panel" class:collapsed={!isPanelOpen}>
-    <button class="toggle-button" on:click={togglePanel}>
-      {isPanelOpen ? '◀' : '▶'}
+  <!-- Left Controls Panel -->
+  <div class="controls-panel left-panel" class:collapsed={!isControlPanelOpen}>
+    <button class="toggle-button left-toggle" on:click={toggleControlPanel}>
+      {isControlPanelOpen ? '◀' : '▶'}
     </button>
     
-    {#if isPanelOpen}
+    {#if isControlPanelOpen}
       <div class="controls-card">
         <div class="controls-content">
           <h3 class="panel-title">GRDECL Controls</h3>
@@ -244,6 +251,25 @@
     {/if}
   </div>
 
+  <!-- Right File Viewer Panel -->
+  <div class="file-viewer-panel right-panel" class:collapsed={!isFileViewerOpen}>
+    <button class="toggle-button right-toggle" on:click={toggleFileViewer}>
+      {isFileViewerOpen ? '▶' : '◀'}
+    </button>
+    
+    {#if isFileViewerOpen}
+      <div class="file-viewer-card">
+        <div class="file-viewer-header">
+          <h3 class="panel-title">📄 GRDECL File Content</h3>
+          <span class="file-path">{GRDECL_FILE_PATH}</span>
+        </div>
+        <div class="file-viewer-content">
+          <pre><code>{fileContent || 'No file loaded'}</code></pre>
+        </div>
+      </div>
+    {/if}
+  </div>
+
   <!-- 3D Visualization -->
   <div class="canvas-container">
     <ThrelteCanvas showGrid={true} cameraPosition={{ x: 30, y: 30, z: 30 }} resetTrigger={cameraRef}>
@@ -276,27 +302,41 @@
     position: relative;
   }
 
-  .controls-panel {
+  /* Base Panel Styles */
+  .controls-panel,
+  .file-viewer-panel {
     position: absolute;
     top: 20px;
-    left: 20px;
     z-index: 100;
     transition: transform 0.3s ease;
   }
 
-  .controls-panel.collapsed {
+  /* Left Panel */
+  .left-panel {
+    left: 20px;
+  }
+
+  .left-panel.collapsed {
     transform: translateX(-100%);
   }
 
+  /* Right Panel */
+  .right-panel {
+    right: 20px;
+  }
+
+  .right-panel.collapsed {
+    transform: translateX(100%);
+  }
+
+  /* Toggle Buttons */
   .toggle-button {
     position: absolute;
-    right: -30px;
     top: 10px;
     width: 30px;
     height: 50px;
     background: linear-gradient(135deg, #667eea, #764ba2);
     border: none;
-    border-radius: 0 8px 8px 0;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -305,12 +345,24 @@
     color: white;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
     transition: all 0.3s ease;
+    z-index: 101;
+  }
+
+  .left-toggle {
+    right: -30px;
+    border-radius: 0 8px 8px 0;
+  }
+
+  .right-toggle {
+    left: -30px;
+    border-radius: 8px 0 0 8px;
   }
 
   .toggle-button:hover {
     background: linear-gradient(135deg, #5568d3, #6a3f8f);
   }
 
+  /* Controls Card */
   .controls-card {
     background: #2d3748;
     border-radius: 12px;
@@ -325,6 +377,75 @@
     padding: 20px;
   }
 
+  /* File Viewer Card */
+  .file-viewer-card {
+    background: #2d3748;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    width: 400px;
+    max-height: calc(100vh - 140px);
+  }
+
+  .file-viewer-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .file-path {
+    display: block;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 0.5rem;
+    font-family: monospace;
+  }
+
+  .file-viewer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    background: #1a202c;
+    border-radius: 0 0 12px 12px;
+  }
+
+  .file-viewer-content pre {
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    color: #a0aec0;
+  }
+
+  .file-viewer-content code {
+    display: block;
+    white-space: pre;
+  }
+
+  /* Scrollbar Styling */
+  .controls-content::-webkit-scrollbar,
+  .file-viewer-content::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .controls-content::-webkit-scrollbar-track,
+  .file-viewer-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+  }
+
+  .controls-content::-webkit-scrollbar-thumb,
+  .file-viewer-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  .controls-content::-webkit-scrollbar-thumb:hover,
+  .file-viewer-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
   .panel-title {
     font-size: 1.25rem;
     font-weight: 700;
@@ -332,6 +453,12 @@
     margin: 0 0 1.25rem 0;
     padding-bottom: 0.75rem;
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .file-viewer-header .panel-title {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
   }
 
   .section-header {
@@ -571,5 +698,110 @@
   .loading-overlay p {
     color: #667eea;
     font-weight: 600;
+  }
+
+  /* Mobile Responsive Styles */
+  @media (max-width: 768px) {
+    .controls-panel,
+    .file-viewer-panel {
+      top: 10px;
+    }
+
+    .left-panel {
+      left: 10px;
+    }
+
+    .right-panel {
+      right: 10px;
+    }
+
+    .controls-card,
+    .file-viewer-card {
+      width: calc(100vw - 80px);
+      max-width: 300px;
+    }
+
+    .controls-content {
+      width: 100%;
+      max-height: calc(100vh - 120px);
+      padding: 15px;
+    }
+
+    .file-viewer-card {
+      max-width: 320px;
+      max-height: calc(100vh - 120px);
+    }
+
+    .file-viewer-header {
+      padding: 15px;
+    }
+
+    .file-viewer-content {
+      padding: 15px;
+    }
+
+    .panel-title {
+      font-size: 1rem;
+    }
+
+    .section-title {
+      font-size: 0.8rem;
+    }
+
+    .control-item label,
+    .checkbox-label {
+      font-size: 0.8rem;
+    }
+
+    .number-input {
+      width: 55px;
+      font-size: 0.8rem;
+    }
+
+    .file-viewer-content pre {
+      font-size: 0.7rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .controls-card,
+    .file-viewer-card {
+      max-width: 260px;
+    }
+
+    .toggle-button {
+      width: 25px;
+      height: 40px;
+      font-size: 14px;
+    }
+
+    .left-toggle {
+      right: -25px;
+    }
+
+    .right-toggle {
+      left: -25px;
+    }
+
+    .controls-content {
+      padding: 12px;
+    }
+
+    .file-viewer-header,
+    .file-viewer-content {
+      padding: 12px;
+    }
+
+    .panel-title {
+      font-size: 0.95rem;
+    }
+
+    .file-path {
+      font-size: 0.65rem;
+    }
+
+    .control-item {
+      margin-bottom: 1rem;
+    }
   }
 </style>
