@@ -22,7 +22,7 @@
   let cameraRef: any = null;
 
   // Path to GRDECL file in static folder
-  const GRDECL_FILE_PATH = '/data/simple_3layer.grdecl';
+  const GRDECL_FILE_PATH = '/data/output_reservoir.grdecl';
 
   // Auto-load GRDECL data on mount
   onMount(() => {
