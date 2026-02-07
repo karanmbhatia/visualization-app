@@ -3,6 +3,121 @@
   import ThrelteCanvas from '$lib/components/ThrelteCanvas.svelte';
   import GrdeclScene from '$lib/components/GrdeclScene.svelte';
   import { parseGrdecl, type GrdeclData } from '$lib/utils/grdeclParser';
+  import CommandWindow from '$lib/components/CommandWindow.svelte';
+
+  /* =========================
+     PAGE-LEVEL WORKSPACE STATE
+     (MATLAB "workspace")
+  ========================= */
+
+  let grid: any = null;
+
+  let visualizationSettings = {
+    showWireframe: true,
+    showSolid: false
+  };
+
+  /* =========================
+     CALLBACKS FROM COMMAND WINDOW
+  ========================= */
+
+  function handleGridUpdate(newGrid: any) {
+    console.log('handleGridUpdate called with:', newGrid);
+    
+    // Handle clear command (null grid)
+    if (newGrid === null) {
+      grid = null;
+      grdeclData = null;
+      statsText = 'Workspace cleared. Load data or generate grid to begin.';
+      console.log('Workspace cleared');
+      return;
+    }
+    
+    grid = newGrid;
+    
+    // If grid data is provided, update grdeclData to display it
+    if (newGrid) {
+      // The command window should return data in GRDECL format
+      // Update the visualization data
+      grdeclData = newGrid;
+      
+      // Update stats display if grid has metadata
+      if (newGrid.metadata?.gridDims) {
+        const [nx, ny, nz] = newGrid.metadata.gridDims;
+        const totalCells = nx * ny * nz;
+        statsText = `Grid: ${nx}×${ny}×${nz} | Total cells: ${totalCells}`;
+      } else if (newGrid.specgrid) {
+        const { nx, ny, nz } = newGrid.specgrid;
+        const activeCells = newGrid.cells?.num || 0;
+        const totalCells = nx * ny * nz;
+        statsText = `Grid: ${nx}×${ny}×${nz} | Active cells: ${activeCells}/${totalCells}`;
+      }
+      
+      console.log('Grid updated successfully');
+    }
+  }
+
+  function handleVisualizationChange(settings: any) {
+    console.log('handleVisualizationChange called with:', settings);
+    
+    visualizationSettings = {
+      ...visualizationSettings,
+      ...settings
+    };
+    
+    // Update existing visualization settings
+    if (settings.colormap !== undefined) {
+      colormap = settings.colormap;
+      console.log('Colormap changed to:', colormap);
+    }
+    if (settings.showEdges !== undefined) {
+      showEdges = settings.showEdges;
+      console.log('Show edges changed to:', showEdges);
+    }
+    if (settings.showWireframe !== undefined) {
+      visualizationSettings.showWireframe = settings.showWireframe;
+      console.log('Wireframe changed to:', settings.showWireframe);
+    }
+    
+    // FIXED: Handle camera view changes
+    if (settings.cameraView !== undefined) {
+      console.log('Camera view command received:', settings.cameraView);
+      handleCameraViewChange(settings.cameraView);
+    }
+    
+    // Handle camera reset
+    if (settings.resetCamera) {
+      console.log('Camera reset command received');
+      handleResetView();
+    }
+  }
+
+  function handleCameraViewChange(view: string) {
+    console.log('Setting camera view to:', view);
+    
+    // Define camera positions for different views
+    const viewPositions = {
+      top: { x: 0, y: 50, z: 0.001 },      // Looking down from above
+      side: { x: 50, y: 0, z: 0.001 },     // Looking from the side (X-axis)
+      front: { x: 0.001, y: 0.001, z: 50 }, // Looking from the front (Z-axis)
+      default: { x: 30, y: 30, z: 30 }     // Default diagonal view
+    };
+    
+    const position = viewPositions[view] || viewPositions.default;
+    
+    // Trigger camera position change
+    cameraRef = { 
+      reset: true, 
+      position: position 
+    };
+    
+    console.log('Camera position set to:', position);
+    
+    // Clear the trigger after a short delay
+    setTimeout(() => {
+      cameraRef = null;
+    }, 100);
+  }
 
   let grdeclData: GrdeclData | null = null;
   let fileContent: string = '';
@@ -12,6 +127,7 @@
   let statsText = 'Loading GRDECL data...';
   let isControlPanelOpen = true;
   let isFileViewerOpen = false;
+  let isCommandWindowOpen = true; // New state for command window
 
   // Physical size controls (0.1 to 10.0 range)
   let widthScale = 1.0;    // X-axis: Width of each grid cell
@@ -83,6 +199,10 @@
     isFileViewerOpen = !isFileViewerOpen;
   }
 
+  function toggleCommandWindow() {
+    isCommandWindowOpen = !isCommandWindowOpen;
+  }
+
   // Reset cell sizes to default (1.0)
   function resetCellSizes() {
     widthScale = 1.0;
@@ -119,7 +239,7 @@
 </svelte:head>
 
 <div class="page-container">
-  <!-- Left Controls Panel -->
+  <!-- Left Controls Panel - COMPACT -->
   <div class="controls-panel left-panel" class:collapsed={!isControlPanelOpen}>
     <button class="toggle-button left-toggle" on:click={toggleControlPanel}>
       {isControlPanelOpen ? '◀' : '▶'}
@@ -132,13 +252,13 @@
           
           <!-- Physical Size Controls Section -->
           <div class="section-header">
-            <h4 class="section-title">📏 Physical Size (m)</h4>
+            <h4 class="section-title">📏 Size (m)</h4>
           </div>
 
-          <!-- Width (X) Control -->
+          <!-- Width (X) Control - COMPACT -->
           <div class="control-item">
             <div class="label-row">
-              <label for="widthScale">Width (X)</label>
+              <label for="widthScale">Width</label>
               <input 
                 type="number" 
                 class="number-input"
@@ -160,10 +280,10 @@
             />
           </div>
 
-          <!-- Breadth (Z) Control -->
+          <!-- Breadth (Z) Control - COMPACT -->
           <div class="control-item">
             <div class="label-row">
-              <label for="depthScale">Breadth (Z)</label>
+              <label for="depthScale">Breadth</label>
               <input 
                 type="number" 
                 class="number-input"
@@ -185,10 +305,10 @@
             />
           </div>
 
-          <!-- Height (Y) Control -->
+          <!-- Height (Y) Control - COMPACT -->
           <div class="control-item">
             <div class="label-row">
-              <label for="heightScale">Height/Depth (Y)</label>
+              <label for="heightScale">Height</label>
               <input 
                 type="number" 
                 class="number-input"
@@ -210,10 +330,10 @@
             />
           </div>
 
-          <!-- Reset Cell Sizes Button -->
-          <div class="control-item">
-            <button on:click={resetCellSizes} class="reset-button">
-              Reset Cell Sizes
+          <!-- Compact Button Row -->
+          <div class="button-row">
+            <button on:click={resetCellSizes} class="compact-button">
+              Reset
             </button>
           </div>
 
@@ -237,8 +357,8 @@
             </label>
           </div>
 
-          <div class="control-item">
-            <button on:click={handleResetView} class="action-button">
+          <div class="button-row">
+            <button on:click={handleResetView} class="compact-button">
               Reset View
             </button>
           </div>
@@ -251,7 +371,7 @@
     {/if}
   </div>
 
-  <!-- Right File Viewer Panel -->
+  <!-- Right File Viewer Panel - COMPACT -->
   <div class="file-viewer-panel right-panel" class:collapsed={!isFileViewerOpen}>
     <button class="toggle-button right-toggle" on:click={toggleFileViewer}>
       {isFileViewerOpen ? '▶' : '◀'}
@@ -260,12 +380,29 @@
     {#if isFileViewerOpen}
       <div class="file-viewer-card">
         <div class="file-viewer-header">
-          <h3 class="panel-title">📄 GRDECL File Content</h3>
-          <span class="file-path">{GRDECL_FILE_PATH}</span>
+          <h3 class="panel-title">File</h3>
+          <p class="file-path">{GRDECL_FILE_PATH}</p>
         </div>
         <div class="file-viewer-content">
-          <pre><code>{fileContent || 'No file loaded'}</code></pre>
+          <pre>{fileContent || 'No file loaded...'}</pre>
         </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- Bottom Right Command Window - COMPACT -->
+  <div class="command-panel" class:collapsed={!isCommandWindowOpen}>
+    <!-- Compact toggle button -->
+    <button class="toggle-button command-toggle" on:click={toggleCommandWindow}>
+      {isCommandWindowOpen ? '▼' : '▲'}
+    </button>
+    
+    {#if isCommandWindowOpen}
+      <div class="command-card">
+        <CommandWindow 
+          onGridUpdate={handleGridUpdate}
+          onVisualizationChange={handleVisualizationChange}
+        />
       </div>
     {/if}
   </div>
@@ -288,7 +425,7 @@
     {#if loading}
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <p>Loading GRDECL visualization...</p>
+        <p>Loading visualization...</p>
       </div>
     {/if}
   </div>
@@ -302,7 +439,7 @@
     position: relative;
   }
 
-  /* Base Panel Styles */
+  /* Panels Base Styles */
   .controls-panel,
   .file-viewer-panel {
     position: absolute;
@@ -311,202 +448,214 @@
     transition: transform 0.3s ease;
   }
 
-  /* Left Panel */
   .left-panel {
     left: 20px;
   }
 
-  .left-panel.collapsed {
-    transform: translateX(-100%);
-  }
-
-  /* Right Panel */
   .right-panel {
     right: 20px;
   }
 
-  .right-panel.collapsed {
+  .controls-panel.collapsed {
+    transform: translateX(-100%);
+  }
+
+  .file-viewer-panel.collapsed {
     transform: translateX(100%);
   }
 
-  /* Toggle Buttons */
+  /* COMPACT: Command Panel - Right Corner */
+  .command-panel {
+    position: absolute;
+    bottom: 0;
+    right: 0;  /* Changed from spanning full width */
+    width: 500px;  /* Fixed width instead of left: 20px */
+    z-index: 100;
+    transition: transform 0.3s ease;
+  }
+
+  .command-panel.collapsed {
+    transform: translateY(100%);
+  }
+
+  /* COMPACT: Command Toggle Button */
+  .toggle-button.command-toggle {
+    position: absolute;
+    top: -25px;  /* Reduced from -30px */
+    right: 20px;  /* Right-aligned */
+    transform: none;  /* No centering transform */
+    width: 60px;  /* Reduced from 80px */
+    height: 25px;  /* Reduced from 30px */
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    border-radius: 6px 6px 0 0;  /* Smaller radius */
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;  /* Smaller font */
+    color: white;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+    z-index: 101;
+  }
+
+  /* COMPACT: Command Card */
+  .command-card {
+    width: 100%;
+    height: 280px;  /* Reduced from 350px */
+    background: #1e1e1e;
+    border-radius: 6px 0 0 0;  /* Only top-left rounded */
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+  }
+
   .toggle-button {
     position: absolute;
-    top: 10px;
-    width: 30px;
-    height: 50px;
+    width: 25px;  /* Reduced from 30px */
+    height: 40px;  /* Reduced from 50px */
     background: linear-gradient(135deg, #667eea, #764ba2);
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 14px;  /* Reduced from 16px */
     color: white;
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
     transition: all 0.3s ease;
-    z-index: 101;
   }
 
   .left-toggle {
-    right: -30px;
-    border-radius: 0 8px 8px 0;
+    right: -25px;  /* Adjusted for smaller button */
+    top: 10px;
+    border-radius: 0 6px 6px 0;
   }
 
   .right-toggle {
-    left: -30px;
-    border-radius: 8px 0 0 8px;
+    left: -25px;  /* Adjusted for smaller button */
+    top: 10px;
+    border-radius: 6px 0 0 6px;
   }
 
   .toggle-button:hover {
     background: linear-gradient(135deg, #5568d3, #6a3f8f);
   }
 
-  /* Controls Card */
-  .controls-card {
-    background: #2d3748;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .controls-content {
-    width: 300px;
-    max-height: calc(100vh - 140px);
-    overflow-y: auto;
-    padding: 20px;
-  }
-
-  /* File Viewer Card */
+  .controls-card,
   .file-viewer-card {
     background: #2d3748;
-    border-radius: 12px;
+    border-radius: 8px;  /* Reduced from 12px */
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* COMPACT: Controls Content */
+  .controls-content {
+    width: 220px;  /* Reduced from 300px */
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+    padding: 12px;  /* Reduced from 20px */
+  }
+
+  /* COMPACT: File Viewer Card */
+  .file-viewer-card {
+    width: 320px;  /* Reduced from 450px */
+    max-height: calc(100vh - 140px);
     display: flex;
     flex-direction: column;
-    width: 400px;
-    max-height: calc(100vh - 140px);
+    overflow: hidden;
   }
 
   .file-viewer-header {
-    padding: 20px;
+    padding: 12px;  /* Reduced from 20px */
+    background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .file-path {
-    display: block;
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.5);
-    margin-top: 0.5rem;
-    font-family: monospace;
+    color: #a0aec0;
+    font-size: 0.65rem;  /* Reduced from 0.75rem */
+    margin: 0.5rem 0 0;
+    font-family: 'Courier New', monospace;
   }
 
   .file-viewer-content {
     flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-    background: #1a202c;
-    border-radius: 0 0 12px 12px;
+    overflow: auto;
+    padding: 12px;  /* Reduced from 20px */
   }
 
   .file-viewer-content pre {
     margin: 0;
+    color: #d4d4d4;
     font-family: 'Courier New', monospace;
-    font-size: 0.75rem;
-    line-height: 1.5;
-    color: #a0aec0;
-  }
-
-  .file-viewer-content code {
-    display: block;
-    white-space: pre;
-  }
-
-  /* Scrollbar Styling */
-  .controls-content::-webkit-scrollbar,
-  .file-viewer-content::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .controls-content::-webkit-scrollbar-track,
-  .file-viewer-content::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-  }
-
-  .controls-content::-webkit-scrollbar-thumb,
-  .file-viewer-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-  }
-
-  .controls-content::-webkit-scrollbar-thumb:hover,
-  .file-viewer-content::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+    font-size: 0.65rem;  /* Reduced from 0.75rem */
+    line-height: 1.4;  /* Tighter line height */
+    white-space: pre-wrap;
+    word-wrap: break-word;
   }
 
   .panel-title {
-    font-size: 1.25rem;
+    font-size: 1rem;  /* Reduced from 1.25rem */
     font-weight: 700;
     color: white;
-    margin: 0 0 1.25rem 0;
-    padding-bottom: 0.75rem;
+    margin: 0 0 0.75rem 0;  /* Reduced margin */
+    padding-bottom: 0.5rem;  /* Reduced padding */
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
   }
 
-  .file-viewer-header .panel-title {
-    margin-bottom: 0;
-    padding-bottom: 0;
-    border-bottom: none;
-  }
-
   .section-header {
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;  /* Reduced from 1rem */
   }
 
   .section-title {
-    font-size: 0.875rem;
+    font-size: 0.75rem;  /* Reduced from 0.875rem */
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.7);
+    color: #48bb78;
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
   .section-divider {
-    margin: 1.5rem 0;
     height: 1px;
-    background: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(to right, transparent, rgba(255,255,255,0.2), transparent);
+    margin: 1rem 0;  /* Reduced from 1.5rem */
   }
 
   .control-item {
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.75rem;  /* Reduced from 1.25rem */
+  }
+
+  .control-item label {
+    display: block;
+    font-size: 0.75rem;  /* Reduced from 0.875rem */
+    margin-bottom: 0.375rem;  /* Reduced */
+    color: white;
+    font-weight: 500;
   }
 
   .label-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.375rem;  /* Reduced */
   }
 
-  .control-item label {
-    font-size: 0.875rem;
-    color: white;
-    font-weight: 500;
+  .label-row label {
+    margin-bottom: 0;
   }
 
-  /* Number Input Field */
   .number-input {
-    width: 60px;
-    padding: 0.375rem 0.5rem;
+    width: 50px;  /* Reduced from 65px */
+    padding: 0.25rem 0.375rem;  /* Reduced padding */
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 4px;
-    color: #48bb78;
+    color: white;
     font-weight: 700;
-    font-size: 0.875rem;
+    font-size: 0.75rem;  /* Reduced from 0.875rem */
     text-align: center;
     transition: all 0.2s ease;
   }
@@ -523,10 +672,9 @@
     border-color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Slider Styles */
   .slider {
     width: 100%;
-    height: 6px;
+    height: 4px;  /* Reduced from 6px */
     border-radius: 5px;
     background: rgba(255, 255, 255, 0.1);
     outline: none;
@@ -537,8 +685,8 @@
   .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 14px;  /* Reduced from 18px */
+    height: 14px;
     border-radius: 50%;
     background: linear-gradient(135deg, #48bb78, #38a169);
     cursor: pointer;
@@ -552,8 +700,8 @@
   }
 
   .slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: linear-gradient(135deg, #48bb78, #38a169);
     cursor: pointer;
@@ -567,35 +715,42 @@
     box-shadow: 0 4px 12px rgba(72, 187, 120, 0.6);
   }
 
-  /* Reset Button */
-  .reset-button {
-    width: 100%;
-    padding: 0.75rem 1.25rem;
-    background: linear-gradient(135deg, #f093fb, #f5576c);
+  /* COMPACT: Button Row */
+  .button-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 0.75rem;
+  }
+
+  /* COMPACT: Smaller Buttons */
+  .compact-button {
+    flex: 1;
+    padding: 0.5rem 0.75rem;  /* Reduced padding */
+    background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;  /* Smaller radius */
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.75rem;  /* Smaller font */
     cursor: pointer;
     transition: all 0.3s ease;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
   }
 
-  .reset-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(240, 147, 251, 0.4);
+  .compact-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
   }
 
   select {
     width: 100%;
-    padding: 0.625rem;
+    padding: 0.5rem;  /* Reduced from 0.625rem */
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    border-radius: 4px;  /* Smaller radius */
     color: white;
-    font-size: 0.875rem;
+    font-size: 0.75rem;  /* Reduced from 0.875rem */
     cursor: pointer;
     transition: all 0.3s ease;
   }
@@ -615,50 +770,30 @@
     align-items: center;
     cursor: pointer;
     color: white;
-    font-size: 0.875rem;
+    font-size: 0.75rem;  /* Reduced from 0.875rem */
   }
 
   .checkbox-label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 16px;  /* Reduced from 18px */
+    height: 16px;
     margin-right: 0.5rem;
     cursor: pointer;
     accent-color: #667eea;
   }
 
-  .action-button {
-    width: 100%;
-    padding: 0.75rem 1.25rem;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .action-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-  }
-
   .stats-display {
-    margin-top: 1rem;
-    padding: 0.875rem;
+    margin-top: 0.75rem;  /* Reduced from 1rem */
+    padding: 0.625rem;  /* Reduced from 0.875rem */
     background: rgba(102, 126, 234, 0.2);
-    border-radius: 6px;
+    border-radius: 4px;  /* Smaller radius */
     border-left: 3px solid #667eea;
   }
 
   .stats-display p {
     color: white;
-    font-size: 0.75rem;
+    font-size: 0.65rem;  /* Reduced from 0.75rem */
     margin: 0;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   .canvas-container {
@@ -682,9 +817,9 @@
   }
 
   .spinner {
-    width: 50px;
-    height: 50px;
-    border: 4px solid #e5e7eb;
+    width: 40px;  /* Reduced from 50px */
+    height: 40px;
+    border: 3px solid #e5e7eb;  /* Thinner border */
     border-top-color: #667eea;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
@@ -698,6 +833,7 @@
   .loading-overlay p {
     color: #667eea;
     font-weight: 600;
+    font-size: 0.875rem;  /* Smaller */
   }
 
   /* Mobile Responsive Styles */
@@ -715,93 +851,90 @@
       right: 10px;
     }
 
-    .controls-card,
-    .file-viewer-card {
+    .command-panel {
+      bottom: 0;
+      right: 0;
+      width: 100%;  /* Full width on mobile */
+    }
+
+    .command-card {
+      width: 100%;
+      height: 250px;  /* Even smaller on mobile */
+    }
+
+    .controls-card {
       width: calc(100vw - 80px);
-      max-width: 300px;
+      max-width: 200px;  /* Reduced */
+    }
+
+    .file-viewer-card {
+      max-width: 280px;  /* Reduced */
     }
 
     .controls-content {
       width: 100%;
       max-height: calc(100vh - 120px);
-      padding: 15px;
+      padding: 10px;
     }
 
-    .file-viewer-card {
-      max-width: 320px;
-      max-height: calc(100vh - 120px);
-    }
-
-    .file-viewer-header {
-      padding: 15px;
-    }
-
+    .file-viewer-header,
     .file-viewer-content {
-      padding: 15px;
+      padding: 10px;
     }
 
     .panel-title {
-      font-size: 1rem;
+      font-size: 0.875rem;
     }
 
     .section-title {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
     }
 
     .control-item label,
     .checkbox-label {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
     }
 
     .number-input {
-      width: 55px;
-      font-size: 0.8rem;
-    }
-
-    .file-viewer-content pre {
+      width: 45px;
       font-size: 0.7rem;
     }
   }
 
   @media (max-width: 480px) {
-    .controls-card,
+    .controls-card {
+      max-width: 180px;
+    }
+
     .file-viewer-card {
-      max-width: 260px;
+      max-width: 240px;
     }
 
     .toggle-button {
-      width: 25px;
-      height: 40px;
-      font-size: 14px;
+      width: 22px;
+      height: 35px;
+      font-size: 12px;
     }
 
     .left-toggle {
-      right: -25px;
+      right: -22px;
     }
 
     .right-toggle {
-      left: -25px;
+      left: -22px;
+    }
+
+    .command-card {
+      height: 200px;
     }
 
     .controls-content {
-      padding: 12px;
+      padding: 8px;
     }
 
     .file-viewer-header,
     .file-viewer-content {
-      padding: 12px;
-    }
-
-    .panel-title {
-      font-size: 0.95rem;
-    }
-
-    .file-path {
-      font-size: 0.65rem;
-    }
-
-    .control-item {
-      margin-bottom: 1rem;
+      padding: 8px;
     }
   }
 </style>

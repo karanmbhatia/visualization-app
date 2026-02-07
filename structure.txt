@@ -1,9 +1,8 @@
 Folder PATH listing for volume OS
 Volume serial number is 2660-0408
-C:.
+C:\USERS\ADMIN\ONEDRIVE - MANIPAL UNIVERSITY JAIPUR\DESKTOP\SVT\VISUALIZATION-APP
 ¦   .gitignore
 ¦   .npmrc
-¦   directory_structure.txt
 ¦   package-lock.json
 ¦   package.json
 ¦   README.md
@@ -32,6 +31,7 @@ C:.
 ¦   ¦   ¦           3.js
 ¦   ¦   ¦           4.js
 ¦   ¦   ¦           5.js
+¦   ¦   ¦           6.js
 ¦   ¦   ¦           
 ¦   ¦   +---server
 ¦   ¦           internal.js
@@ -43,6 +43,9 @@ C:.
 ¦           +---routes
 ¦               ¦   $types.d.ts
 ¦               ¦   
+¦               +---grdecl
+¦               ¦       $types.d.ts
+¦               ¦       
 ¦               +---json
 ¦               ¦       $types.d.ts
 ¦               ¦       
@@ -20182,18 +20185,23 @@ C:.
 ¦   ¦   ¦       favicon.svg
 ¦   ¦   ¦       
 ¦   ¦   +---components
+¦   ¦   ¦       GrdeclScene.svelte
 ¦   ¦   ¦       Method1Scene.svelte
 ¦   ¦   ¦       Method2Scene.svelte
 ¦   ¦   ¦       ThrelteCanvas.svelte
 ¦   ¦   ¦       WasmScene.svelte
 ¦   ¦   ¦       
 ¦   ¦   +---utils
+¦   ¦           grdeclParser.ts
 ¦   ¦           wasmLoader.ts
 ¦   ¦           
 ¦   +---routes
 ¦       ¦   +layout.svelte
 ¦       ¦   +page.svelte
 ¦       ¦   
+¦       +---grdecl
+¦       ¦       +page.svelte
+¦       ¦       
 ¦       +---json
 ¦       ¦       +page.svelte
 ¦       ¦       
@@ -20206,6 +20214,10 @@ C:.
 +---static
     ¦   robots.txt
     ¦   
+    +---data
+    ¦       output_reservoir.grdecl
+    ¦       simple_3layer.grdecl
+    ¦       
     +---wasm
             delaunay_tessellation.js
             delaunay_tessellation.wasm

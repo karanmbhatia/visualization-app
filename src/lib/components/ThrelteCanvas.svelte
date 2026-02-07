@@ -32,11 +32,23 @@
 
   function resetCamera() {
     if (camera && controls) {
-      camera.position.set(initialPosition.x, initialPosition.y, initialPosition.z);
+      // Check if resetTrigger has a custom position
+      let targetPosition = initialPosition;
+      
+      if (resetTrigger && resetTrigger.position) {
+        // Use custom position from resetTrigger
+        targetPosition = resetTrigger.position;
+        console.log('🎯 Using custom camera position:', targetPosition);
+      } else {
+        console.log('🔄 Using initial camera position');
+      }
+      
+      // Set camera position
+      camera.position.set(targetPosition.x, targetPosition.y, targetPosition.z);
       camera.lookAt(0, 0, 0);
       controls.target.set(0, 0, 0);
       controls.update();
-      console.log('🔄 Camera reset to initial position');
+      
       console.log('📍 Camera now at:', {
         x: camera.position.x,
         y: camera.position.y,
